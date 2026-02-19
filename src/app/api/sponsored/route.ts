@@ -1,0 +1,19 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchSponsoredRewards } from '@/lib/sponsored';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+export async function GET(request: NextRequest) {
+  try {
+    const force = request.nextUrl.searchParams.get('force') === '1';
+    const snapshot = await fetchSponsoredRewards(force);
+    return NextResponse.json(snapshot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { error: 'Failed to load sponsored rewards', message },
+      { status: 500 }
+    );
+  }
+}
