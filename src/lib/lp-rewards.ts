@@ -1,15 +1,17 @@
 /**
  * LP rewards fetcher for Polymarket.
  *
- * Pulls reward-eligible markets from the CLOB rewards endpoint,
- * then enriches each with market metadata (question, slug, liquidity,
- * volume) from the Gamma API.
+ * Primary source: Polymarket rewards API (polymarket.com/api/rewards/markets)
+ * which returns all markets with reward configs, paginated by cursor.
+ *
+ * Enriches with Gamma API for market names, slugs, liquidity, and volume.
  */
 
-const CLOB_BASE = 'https://clob.polymarket.com';
+const POLYMARKET_BASE = 'https://polymarket.com';
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
-const REQUEST_TIMEOUT_MS = 12_000;
+const REQUEST_TIMEOUT_MS = 8_000;
 const GAMMA_BATCH_SIZE = 50;
+const MAX_REWARD_PAGES = 250;
 
 /* ─────── types ─────── */
 
@@ -18,8 +20,6 @@ export interface LpRewardMarket {
   question: string;
   eventSlug?: string;
   dailyRate: number;
-  nativeDailyRate: number;
-  sponsoredDailyRate: number;
   maxSpread: number;
   minSize: number;
   rewardStartDate?: string;
@@ -31,8 +31,6 @@ export interface LpRewardMarket {
   bestAsk: number;
   lastTradePrice: number;
   endDate?: string;
-  outcomes?: string;
-  outcomePrices?: string;
 }
 
 export interface LpRewardsSnapshot {
@@ -48,137 +46,84 @@ export interface LpRewardsSnapshot {
   fetchedAt: string;
 }
 
-/* ─────── CLOB rewards fetcher ─────── */
+/* ─────── Polymarket Rewards API ─────── */
 
-interface ClobRewardConfig {
-  asset_address: string;
-  start_date: string;
-  end_date: string;
-  rate_per_day: number;
-  total_rewards: number;
-  id: number;
+interface RewardConfig {
+  rate_per_day?: number;
+  start_date?: string;
+  end_date?: string;
 }
 
-interface ClobRewardEntry {
-  condition_id: string;
-  rewards_config: ClobRewardConfig[];
-  rewards_max_spread: number;
-  rewards_min_size: number;
-  native_daily_rate: number;
-  total_daily_rate: number;
-}
-
-interface ClobRewardsResponse {
-  data: ClobRewardEntry[];
-  next_cursor?: string;
-  limit: number;
-  count: number;
-}
-
-async function fetchClobPage(cursor?: string): Promise<ClobRewardsResponse> {
-  const url = cursor
-    ? `${CLOB_BASE}/rewards/markets/current?next_cursor=${cursor}`
-    : `${CLOB_BASE}/rewards/markets/current`;
-
-  const res = await fetch(url, {
-    headers: {
-      'accept': 'application/json',
-      'user-agent': 'Mozilla/5.0',
-    },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`CLOB ${res.status}: ${body.slice(0, 200)}`);
-  }
-
-  return (await res.json()) as ClobRewardsResponse;
-}
-
-async function fetchAllClobRewards(): Promise<ClobRewardEntry[]> {
-  const all: ClobRewardEntry[] = [];
-  let cursor: string | undefined = undefined;
-  const maxPages = 20;
-
-  for (let page = 0; page < maxPages; page++) {
-    const payload = await fetchClobPage(cursor);
-    all.push(...payload.data);
-    if (!payload.next_cursor || payload.data.length === 0) break;
-    cursor = payload.next_cursor;
-  }
-
-  return all;
-}
-
-/* ─────── Gamma-only fallback ─────── */
-
-interface GammaRewardConfig {
-  rewardsDailyRate?: number;
-  startDate?: string;
-  endDate?: string;
-}
-
-interface GammaFullMarket extends GammaMarket {
+interface RewardRow {
+  condition_id?: string;
   conditionId?: string;
-  rewardsMinSize?: number;
-  rewardsMaxSpread?: number;
-  clobRewards?: GammaRewardConfig[];
+  rewards_config?: RewardConfig[];
+  rewards_max_spread?: number;
+  rewards_min_size?: number;
+  total_daily_rate?: number;
+  native_daily_rate?: number;
 }
 
-let __gammaFallbackCache: Map<string, GammaMarket> | undefined;
+function toNumber(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+  return 0;
+}
 
-async function fetchGammaRewardMarkets(): Promise<ClobRewardEntry[]> {
-  const pageSize = 500;
-  const maxPages = 10;
-  const entries: ClobRewardEntry[] = [];
-  const gammaCache = new Map<string, GammaMarket>();
+function rowDailyRate(row: RewardRow): number {
+  return toNumber(row.total_daily_rate) || toNumber(row.rewards_config?.[0]?.rate_per_day) || 0;
+}
 
-  for (let page = 0; page < maxPages; page++) {
-    const offset = page * pageSize;
-    const url = `${GAMMA_BASE}/markets?active=true&closed=false&limit=${pageSize}&offset=${offset}`;
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-      if (!res.ok) break;
-      const markets = (await res.json()) as GammaFullMarket[];
-      if (!Array.isArray(markets) || markets.length === 0) break;
+async function fetchPolymarketRewardPages(): Promise<RewardRow[]> {
+  const byId = new Map<string, RewardRow>();
+  let cursor: string | undefined = 'MA==';
 
-      for (const m of markets) {
-        if (m.conditionId) gammaCache.set(m.conditionId, m);
+  for (let page = 0; page < MAX_REWARD_PAGES; page++) {
+    if (!cursor) break;
+    const params = new URLSearchParams({
+      orderBy: 'rate_per_day',
+      desc: 'true',
+      nextCursor: cursor,
+    });
+    const url = `${POLYMARKET_BASE}/api/rewards/markets?${params}`;
+    let res: Response | null = null;
 
-        const minSize = m.rewardsMinSize;
-        const maxSpread = m.rewardsMaxSpread;
-        if (!minSize || !maxSpread) continue;
-
-        const reward = m.clobRewards?.[0];
-        const dailyRate = reward?.rewardsDailyRate ?? 0;
-        if (dailyRate <= 0) continue;
-
-        entries.push({
-          condition_id: m.conditionId ?? '',
-          rewards_config: [{
-            asset_address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
-            start_date: reward?.startDate ?? '',
-            end_date: reward?.endDate ?? '',
-            rate_per_day: dailyRate,
-            total_rewards: 0,
-            id: 0,
-          }],
-          rewards_max_spread: maxSpread,
-          rewards_min_size: minSize,
-          native_daily_rate: dailyRate,
-          total_daily_rate: dailyRate,
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        res = await fetch(url, {
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
-      }
-
-      if (markets.length < pageSize) break;
-    } catch {
-      break;
+        if (res.ok) break;
+        res = null;
+      } catch { res = null; }
     }
+    if (!res) break;
+
+    const payload = (await res.json()) as {
+      data?: RewardRow[];
+      nextCursor?: string;
+      next_cursor?: string;
+    };
+
+    const rows = payload.data ?? [];
+    if (!rows.length) break;
+
+    for (const row of rows) {
+      const id = row.condition_id ?? row.conditionId ?? '';
+      if (!id) continue;
+      const prev = byId.get(id);
+      if (!prev || rowDailyRate(row) > rowDailyRate(prev)) {
+        byId.set(id, row);
+      }
+    }
+
+    const next = payload.nextCursor ?? payload.next_cursor;
+    if (!next || next === cursor) break;
+    cursor = next;
   }
 
-  __gammaFallbackCache = gammaCache;
-  return entries;
+  return Array.from(byId.values()).sort((a, b) => rowDailyRate(b) - rowDailyRate(a));
 }
 
 /* ─────── Gamma enrichment ─────── */
@@ -196,13 +141,11 @@ interface GammaMarket {
   bestAsk?: number;
   lastTradePrice?: number;
   endDate?: string;
-  outcomes?: string;
-  outcomePrices?: string;
+  rewardsMinSize?: number;
+  rewardsMaxSpread?: number;
 }
 
-async function fetchGammaBatch(
-  batch: string[]
-): Promise<GammaMarket[]> {
+async function fetchGammaBatch(batch: string[]): Promise<GammaMarket[]> {
   const qs = batch.map(id => `condition_ids=${id}`).join('&');
   try {
     const res = await fetch(
@@ -211,15 +154,10 @@ async function fetchGammaBatch(
     );
     if (!res.ok) return [];
     return (await res.json()) as GammaMarket[];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
-async function enrichWithGamma(
-  entries: ClobRewardEntry[]
-): Promise<Map<string, GammaMarket>> {
-  const conditionIds = entries.map(e => e.condition_id);
+async function enrichWithGamma(conditionIds: string[]): Promise<Map<string, GammaMarket>> {
   const map = new Map<string, GammaMarket>();
   const batches: string[][] = [];
 
@@ -243,30 +181,26 @@ async function enrichWithGamma(
 
 /* ─────── assemble ─────── */
 
-function buildMarket(entry: ClobRewardEntry, gamma?: GammaMarket): LpRewardMarket {
-  const config = entry.rewards_config[0];
-  const sponsoredRate = entry.total_daily_rate - entry.native_daily_rate;
+function buildMarket(row: RewardRow, gamma?: GammaMarket): LpRewardMarket {
+  const config = row.rewards_config?.[0];
+  const id = row.condition_id ?? row.conditionId ?? '';
 
   return {
-    conditionId: entry.condition_id,
-    question: gamma?.question ?? entry.condition_id.slice(0, 18) + '...',
+    conditionId: id,
+    question: gamma?.question ?? id.slice(0, 18) + '...',
     eventSlug: gamma?.events?.[0]?.slug,
-    dailyRate: entry.total_daily_rate,
-    nativeDailyRate: entry.native_daily_rate,
-    sponsoredDailyRate: sponsoredRate > 0 ? sponsoredRate : 0,
-    maxSpread: entry.rewards_max_spread,
-    minSize: entry.rewards_min_size,
+    dailyRate: rowDailyRate(row),
+    maxSpread: toNumber(row.rewards_max_spread) || toNumber(gamma?.rewardsMaxSpread) || 0,
+    minSize: toNumber(row.rewards_min_size) || toNumber(gamma?.rewardsMinSize) || 0,
     rewardStartDate: config?.start_date,
     rewardEndDate: config?.end_date,
-    liquidity: Number(gamma?.liquidityNum ?? gamma?.liquidity ?? 0),
-    volume24h: gamma?.volume24hr ?? 0,
-    spread: gamma?.spread ?? 0,
-    bestBid: gamma?.bestBid ?? 0,
-    bestAsk: gamma?.bestAsk ?? 0,
-    lastTradePrice: gamma?.lastTradePrice ?? 0,
+    liquidity: toNumber(gamma?.liquidityNum ?? gamma?.liquidity),
+    volume24h: toNumber(gamma?.volume24hr),
+    spread: toNumber(gamma?.spread),
+    bestBid: toNumber(gamma?.bestBid),
+    bestAsk: toNumber(gamma?.bestAsk),
+    lastTradePrice: toNumber(gamma?.lastTradePrice),
     endDate: gamma?.endDate,
-    outcomes: gamma?.outcomes,
-    outcomePrices: gamma?.outcomePrices,
   };
 }
 
@@ -286,19 +220,16 @@ export async function fetchLpRewards(force = false): Promise<LpRewardsSnapshot> 
     if (age < STALE_MS) return cached;
   }
 
-  let entries: ClobRewardEntry[];
-  let gammaMap: Map<string, GammaMarket>;
-  try {
-    entries = await fetchAllClobRewards();
-    gammaMap = await enrichWithGamma(entries);
-  } catch {
-    entries = await fetchGammaRewardMarkets();
-    gammaMap = __gammaFallbackCache ?? new Map();
-  }
+  const rows = await fetchPolymarketRewardPages();
+  const conditionIds = rows
+    .map(r => r.condition_id ?? r.conditionId ?? '')
+    .filter(Boolean);
 
-  const markets = entries
-    .filter(e => e.total_daily_rate > 0)
-    .map(e => buildMarket(e, gammaMap.get(e.condition_id)))
+  const gammaMap = await enrichWithGamma(conditionIds);
+
+  const markets = rows
+    .filter(r => rowDailyRate(r) > 0)
+    .map(r => buildMarket(r, gammaMap.get(r.condition_id ?? r.conditionId ?? '')))
     .sort((a, b) => b.dailyRate - a.dailyRate);
 
   const rates = markets.map(m => m.dailyRate).sort((a, b) => a - b);

@@ -49,8 +49,6 @@ interface LpRewardMarket {
   question: string;
   eventSlug?: string;
   dailyRate: number;
-  nativeDailyRate: number;
-  sponsoredDailyRate: number;
   maxSpread: number;
   minSize: number;
   rewardStartDate?: string;
@@ -62,8 +60,6 @@ interface LpRewardMarket {
   bestAsk: number;
   lastTradePrice: number;
   endDate?: string;
-  outcomes?: string;
-  outcomePrices?: string;
 }
 
 interface LpOverall {
@@ -534,16 +530,6 @@ function LpTab() {
                     <tr className="bg-[#080808]">
                       <td colSpan={5} className="px-5 py-4 text-[#999]">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
-                          <div>
-                            <span className="text-[#555]">Native rate</span>
-                            <p>{formatCurrency(m.nativeDailyRate)}/d</p>
-                          </div>
-                          {m.sponsoredDailyRate > 0 && (
-                            <div>
-                              <span className="text-[#555]">Sponsored rate</span>
-                              <p>{formatCurrency(m.sponsoredDailyRate)}/d</p>
-                            </div>
-                          )}
                           <div>
                             <span className="text-[#555]">Volume 24h</span>
                             <p>{m.volume24h > 0 ? formatCompact(m.volume24h) : '--'}</p>
