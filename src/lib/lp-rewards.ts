@@ -15,7 +15,7 @@ const LP_DISTRIBUTOR = '0xc288480574783bd7615170660d71753378159c47';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 const USDC_DECIMALS = 1e6;
 const RPC_TIMEOUT_MS = 12_000;
-const CHUNK_SIZE = 40_000;
+const CHUNK_SIZE = 10_000;
 const BLOCKS_PER_DAY = 43_200;
 
 const RPC_ENDPOINTS = [
@@ -115,9 +115,13 @@ async function fetchLogsChunk(
         }),
         signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
       });
-      const d = (await res.json()) as { result?: RawLog[]; error?: unknown };
+      const d = (await res.json()) as { result?: RawLog[]; error?: { message?: string } };
       if (d.result) return d.result;
-    } catch { continue; }
+      if (d.error) console.error(`[lp-rewards] RPC ${rpc} error: ${JSON.stringify(d.error)}`);
+    } catch (e) {
+      console.error(`[lp-rewards] RPC ${rpc} exception: ${e}`);
+      continue;
+    }
   }
   return [];
 }
