@@ -18,9 +18,10 @@ const SPONSORED_TOPIC = '0xa0e1f8e6fb6dd49d885fabbf89adb64c0ef2b16b2786c92d68517
 const WITHDRAWN_TOPIC = '0xb607e1cd434478843932237c1441e30dade0dd0b82ec588670a1d43dea0599de';
 
 const RPC_ENDPOINTS = [
-  'https://polygon.drpc.org',
   'https://polygon-bor-rpc.publicnode.com',
-  'https://1rpc.io/matic',
+  'https://polygon.drpc.org',
+  'https://polygon-mainnet.public.blastapi.io',
+  'https://polygon.meowrpc.com',
 ];
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';

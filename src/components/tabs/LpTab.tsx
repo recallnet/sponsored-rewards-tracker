@@ -32,6 +32,7 @@ interface LpRewardsSnapshot {
   overall: {
     totalMarkets: number;
     totalDailyRewards: number;
+    totalLiquidity: number;
     avgDailyRate: number;
     medianDailyRate: number;
     avgMaxSpread: number;

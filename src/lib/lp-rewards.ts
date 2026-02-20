@@ -1,17 +1,18 @@
 /**
  * LP rewards fetcher for Polymarket.
  *
- * Primary source: Polymarket rewards API (polymarket.com/api/rewards/markets)
- * which returns all markets with reward configs, paginated by cursor.
+ * Primary source: CLOB API (clob.polymarket.com/rewards/markets/current)
+ * which returns all markets with reward configs and total_daily_rate,
+ * paginated by cursor.
  *
  * Enriches with Gamma API for market names, slugs, liquidity, and volume.
  */
 
-const POLYMARKET_BASE = 'https://polymarket.com';
+const CLOB_BASE = 'https://clob.polymarket.com';
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
-const REQUEST_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_MS = 10_000;
 const GAMMA_BATCH_SIZE = 50;
-const MAX_REWARD_PAGES = 10;
+const MAX_REWARD_PAGES = 20;
 
 /* ─────── types ─────── */
 
@@ -38,6 +39,7 @@ export interface LpRewardsSnapshot {
   overall: {
     totalMarkets: number;
     totalDailyRewards: number;
+    totalLiquidity: number;
     avgDailyRate: number;
     medianDailyRate: number;
     avgMaxSpread: number;
@@ -46,7 +48,7 @@ export interface LpRewardsSnapshot {
   fetchedAt: string;
 }
 
-/* ─────── Polymarket Rewards API ─────── */
+/* ─────── CLOB Rewards API ─────── */
 
 interface RewardConfig {
   rate_per_day?: number;
@@ -71,21 +73,19 @@ function toNumber(v: unknown): number {
 }
 
 function rowDailyRate(row: RewardRow): number {
-  return toNumber(row.total_daily_rate) || toNumber(row.rewards_config?.[0]?.rate_per_day) || 0;
+  return toNumber(row.total_daily_rate)
+    || toNumber(row.native_daily_rate)
+    || toNumber(row.rewards_config?.[0]?.rate_per_day)
+    || 0;
 }
 
-async function fetchPolymarketRewardPages(): Promise<RewardRow[]> {
+async function fetchClobRewardPages(): Promise<RewardRow[]> {
   const byId = new Map<string, RewardRow>();
-  let cursor: string | undefined = 'MA==';
+  let cursor: string | undefined = undefined;
 
   for (let page = 0; page < MAX_REWARD_PAGES; page++) {
-    if (!cursor) break;
-    const params = new URLSearchParams({
-      orderBy: 'rate_per_day',
-      desc: 'true',
-      nextCursor: cursor,
-    });
-    const url = `${POLYMARKET_BASE}/api/rewards/markets?${params}`;
+    const params = cursor ? `?next_cursor=${cursor}` : '';
+    const url = `${CLOB_BASE}/rewards/markets/current${params}`;
     let res: Response | null = null;
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -102,8 +102,8 @@ async function fetchPolymarketRewardPages(): Promise<RewardRow[]> {
 
     const payload = (await res.json()) as {
       data?: RewardRow[];
-      nextCursor?: string;
       next_cursor?: string;
+      nextCursor?: string;
     };
 
     const rows = payload.data ?? [];
@@ -118,8 +118,8 @@ async function fetchPolymarketRewardPages(): Promise<RewardRow[]> {
       }
     }
 
-    const next = payload.nextCursor ?? payload.next_cursor;
-    if (!next || next === cursor) break;
+    const next = payload.next_cursor ?? payload.nextCursor;
+    if (!next || next === 'LTE=' || next === cursor) break;
     cursor = next;
   }
 
@@ -220,7 +220,7 @@ export async function fetchLpRewards(force = false): Promise<LpRewardsSnapshot> 
     if (age < STALE_MS) return cached;
   }
 
-  const rows = await fetchPolymarketRewardPages();
+  const rows = await fetchClobRewardPages();
   const conditionIds = rows
     .map(r => r.condition_id ?? r.conditionId ?? '')
     .filter(Boolean);
@@ -234,6 +234,7 @@ export async function fetchLpRewards(force = false): Promise<LpRewardsSnapshot> 
 
   const rates = markets.map(m => m.dailyRate).sort((a, b) => a - b);
   const totalDaily = rates.reduce((s, r) => s + r, 0);
+  const totalLiquidity = markets.reduce((s, m) => s + m.liquidity, 0);
   const median = rates.length > 0 ? rates[Math.floor(rates.length / 2)] : 0;
 
   const snapshot: LpRewardsSnapshot = {
@@ -241,6 +242,7 @@ export async function fetchLpRewards(force = false): Promise<LpRewardsSnapshot> 
     overall: {
       totalMarkets: markets.length,
       totalDailyRewards: totalDaily,
+      totalLiquidity,
       avgDailyRate: markets.length > 0 ? totalDaily / markets.length : 0,
       medianDailyRate: median,
       avgMaxSpread: markets.length > 0
