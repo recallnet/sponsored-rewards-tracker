@@ -19,14 +19,14 @@ const WITHDRAWN_TOPIC = '0xb607e1cd434478843932237c1441e30dade0dd0b82ec588670a1d
 
 const RPC_ENDPOINTS = [
   'https://polygon-bor-rpc.publicnode.com',
+  'https://1rpc.io/matic',
+  'https://rpc-mainnet.matic.quiknode.pro',
   'https://polygon.drpc.org',
-  'https://polygon-mainnet.public.blastapi.io',
-  'https://polygon.meowrpc.com',
 ];
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 
-const CHUNK_SIZE = 500_000;
+const CHUNK_SIZE = 10_000;
 const RPC_TIMEOUT_MS = 15_000;
 
 /* ─────── types ─────── */

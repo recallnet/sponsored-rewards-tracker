@@ -25,9 +25,9 @@ const BLOCKS_PER_DAY = 43_200;
 
 const RPC_ENDPOINTS = [
   'https://polygon-bor-rpc.publicnode.com',
+  'https://1rpc.io/matic',
+  'https://rpc-mainnet.matic.quiknode.pro',
   'https://polygon.drpc.org',
-  'https://polygon-mainnet.public.blastapi.io',
-  'https://polygon.meowrpc.com',
 ];
 
 /* ─────── types ─────── */
