@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const lp = await fetchLpRewards(true);
-    results.lp = { ok: true, markets: lp.overall.totalMarkets, daily: lp.overall.totalDailyRewards };
+    results.lp = { ok: true, total1d: lp.overall.total1d, receivers: lp.overall.totalReceivers };
   } catch (e) {
     results.lp = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
   }

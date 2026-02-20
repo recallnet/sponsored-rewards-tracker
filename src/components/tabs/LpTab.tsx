@@ -1,44 +1,75 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import useSWR from 'swr';
-import { formatCurrency } from '@/lib/utils';
 import { Skeleton, ErrorBlock, Stat } from '../OpportunitiesTable';
-import {
-  PAGE_SIZE, SWR_CONFIG, fetcher,
-  formatRelative, formatTimeLeft, polymarketUrl, formatCompact,
-} from './shared';
+import { SWR_CONFIG, fetcher, formatRelative, formatCompact, addr } from './shared';
 
-interface LpRewardMarket {
-  conditionId: string;
-  question: string;
-  eventSlug?: string;
-  dailyRate: number;
-  maxSpread: number;
-  minSize: number;
-  rewardStartDate?: string;
-  rewardEndDate?: string;
-  liquidity: number;
-  volume24h: number;
-  spread: number;
-  bestBid: number;
-  bestAsk: number;
-  lastTradePrice: number;
-  endDate?: string;
+interface LpDailyTotal {
+  date: string;
+  totalUsdc: number;
+  transfers: number;
+  receivers: number;
+}
+
+interface LpTopReceiver {
+  address: string;
+  amount1d: number;
+  amount7d: number;
+  amountAll: number;
+  pct1d: number;
 }
 
 interface LpRewardsSnapshot {
-  markets: LpRewardMarket[];
+  dailyTotals: LpDailyTotal[];
+  topReceivers: LpTopReceiver[];
   overall: {
-    totalMarkets: number;
-    totalDailyRewards: number;
-    totalLiquidity: number;
-    avgDailyRate: number;
-    medianDailyRate: number;
-    avgMaxSpread: number;
-    avgMinSize: number;
+    total1d: number;
+    total7d: number;
+    totalAll: number;
+    totalReceivers: number;
+    totalTransfers: number;
+    avgDaily: number;
   };
   fetchedAt: string;
+  fromBlock: number;
+  toBlock: number;
+}
+
+type TimeRange = '7d' | '30d' | 'all';
+
+function filterDays(totals: LpDailyTotal[], range: TimeRange): LpDailyTotal[] {
+  if (range === 'all') return totals;
+  const now = new Date();
+  const days = range === '7d' ? 7 : 30;
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+  return totals.filter(d => d.date >= cutoffStr);
+}
+
+function BarChart({ data }: { data: LpDailyTotal[] }) {
+  if (!data.length) return null;
+  const max = Math.max(...data.map(d => d.totalUsdc));
+
+  return (
+    <div className="flex items-end gap-px h-40 w-full">
+      {data.map(d => {
+        const pct = max > 0 ? (d.totalUsdc / max) * 100 : 0;
+        return (
+          <div
+            key={d.date}
+            className="flex-1 bg-emerald-500 hover:bg-emerald-400 transition-colors group relative"
+            style={{ height: `${Math.max(pct, 1)}%` }}
+          >
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-[#111] border border-[#333] px-2 py-1 text-xs font-mono whitespace-nowrap z-10">
+              {d.date}: {formatCompact(d.totalUsdc)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function LpTab() {
@@ -47,46 +78,71 @@ export default function LpTab() {
     fetcher,
     SWR_CONFIG,
   );
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [range, setRange] = useState<TimeRange>('30d');
 
   if (isLoading) return <Skeleton />;
   if (error || !data)
     return <ErrorBlock message={error instanceof Error ? error.message : undefined} label="LP rewards" />;
 
-  const { overall, markets } = data;
-  const totalPages = Math.ceil(markets.length / PAGE_SIZE);
-  const visible = markets.slice(0, page * PAGE_SIZE);
-  const hasMore = page < totalPages;
+  const { overall, topReceivers, dailyTotals } = data;
+  const chartData = filterDays(dailyTotals, range);
 
   return (
     <>
       <div className="mb-14">
         <p className="text-[11px] tracking-[0.3em] uppercase text-[#555] mb-3">
-          Total Daily LP Rewards
+          Daily LP Rewards (On-Chain)
         </p>
         <p className="text-5xl md:text-7xl font-bold tracking-tight leading-none">
-          {formatCurrency(overall.totalDailyRewards)}
+          {formatCompact(overall.total1d)}
           <span className="text-2xl md:text-3xl text-[#555] font-normal">/day</span>
         </p>
         <p className="text-sm text-[#555] mt-4 font-mono">
-          {overall.totalMarkets.toLocaleString()} markets&ensp;·&ensp;
-          avg {formatCurrency(overall.avgDailyRate)}/day&ensp;·&ensp;
-          median {formatCurrency(overall.medianDailyRate)}/day&ensp;·&ensp; updated{' '}
-          {formatRelative(data.fetchedAt)}
+          {overall.totalReceivers.toLocaleString()} receivers&ensp;·&ensp;
+          {formatCompact(overall.total7d)} 7d&ensp;·&ensp;
+          {formatCompact(overall.totalAll)} all time&ensp;·&ensp;
+          updated {formatRelative(data.fetchedAt)}
         </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 border border-[#333] mb-14">
-        <Stat label="Total Markets" value={overall.totalMarkets.toLocaleString()} />
-        <Stat label="Daily Budget" value={formatCurrency(overall.totalDailyRewards)} border />
-        <Stat label="Avg Max Spread" value={`${overall.avgMaxSpread.toFixed(1)}¢`} border />
-        <Stat label="Avg Min Size" value={`${Math.round(overall.avgMinSize)} shares`} border />
+        <Stat label="Today" value={formatCompact(overall.total1d)} />
+        <Stat label="7-Day Total" value={formatCompact(overall.total7d)} border />
+        <Stat label="Avg Daily" value={formatCompact(overall.avgDaily)} border />
+        <Stat label="All Time" value={formatCompact(overall.totalAll)} border />
+      </div>
+
+      <div className="border border-[#333] mb-14 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-[11px] tracking-[0.3em] uppercase text-[#555]">LP Rewards Over Time</p>
+          <div className="flex gap-2">
+            {(['7d', '30d', 'all'] as TimeRange[]).map(r => (
+              <button
+                key={r}
+                className={`text-xs px-3 py-1 border transition-colors ${
+                  range === r
+                    ? 'border-white text-white'
+                    : 'border-[#333] text-[#555] hover:text-white hover:border-white'
+                }`}
+                onClick={() => setRange(r)}
+              >
+                {r.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+        <BarChart data={chartData} />
+        {chartData.length > 0 && (
+          <div className="flex justify-between text-[10px] text-[#555] font-mono mt-2">
+            <span>{chartData[0].date}</span>
+            <span>{chartData[chartData.length - 1].date}</span>
+          </div>
+        )}
       </div>
 
       <div className="mb-4 flex items-end justify-between">
         <p className="text-[11px] tracking-[0.3em] uppercase text-[#555]">
-          Reward Markets ({markets.length})
+          Top Receivers ({topReceivers.length})
         </p>
         <button
           className="text-xs text-[#555] border border-[#333] px-3 py-1.5 hover:text-white hover:border-white transition-colors"
@@ -100,100 +156,48 @@ export default function LpTab() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[11px] text-[#555] uppercase tracking-wider border-b border-[#333]">
-              <th className="py-3 px-5 pr-4">Market</th>
-              <th className="py-3 px-4 text-right">Daily Rate</th>
-              <th className="py-3 px-4 text-right">Max Spread</th>
-              <th className="py-3 px-4 text-right">Min Size</th>
-              <th className="py-3 px-4 text-right">Liquidity</th>
+              <th className="py-3 px-5 pr-4">#</th>
+              <th className="py-3 px-4">Address</th>
+              <th className="py-3 px-4 text-right">1d</th>
+              <th className="py-3 px-4 text-right">7d</th>
+              <th className="py-3 px-4 text-right">All Time</th>
+              <th className="py-3 px-4 text-right">% 1d</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#222]">
-            {visible.map(m => {
-              const isOpen = expanded === m.conditionId;
-              const url = polymarketUrl(m.eventSlug);
-
-              return (
-                <Fragment key={m.conditionId}>
-                  <tr
-                    className="hover:bg-[#0a0a0a] cursor-pointer transition-colors"
-                    onClick={() => setExpanded(p => (p === m.conditionId ? null : m.conditionId))}
+            {topReceivers.map((r, i) => (
+              <tr key={r.address} className="hover:bg-[#0a0a0a] transition-colors">
+                <td className="py-3 px-5 pr-4 font-mono text-[#555] text-xs">{i + 1}</td>
+                <td className="py-3 px-4">
+                  <a
+                    href={`https://polygonscan.com/address/${r.address}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-xs hover:underline"
                   >
-                    <td className="py-3 px-5 pr-4">
-                      {url ? (
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline" onClick={e => e.stopPropagation()}>
-                          {m.question}
-                        </a>
-                      ) : (
-                        <span>{m.question}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono">{formatCurrency(m.dailyRate)}/d</td>
-                    <td className="py-3 px-4 text-right font-mono">{m.maxSpread.toFixed(1)}¢</td>
-                    <td className="py-3 px-4 text-right font-mono">{m.minSize}</td>
-                    <td className="py-3 px-4 text-right font-mono">{m.liquidity > 0 ? formatCompact(m.liquidity) : '--'}</td>
-                  </tr>
-
-                  {isOpen && (
-                    <tr className="bg-[#080808]">
-                      <td colSpan={5} className="px-5 py-4 text-[#999]">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
-                          <div>
-                            <span className="text-[#555]">Volume 24h</span>
-                            <p>{m.volume24h > 0 ? formatCompact(m.volume24h) : '--'}</p>
-                          </div>
-                          <div>
-                            <span className="text-[#555]">Spread</span>
-                            <p>{m.spread > 0 ? `${(m.spread * 100).toFixed(1)}¢` : '--'}</p>
-                          </div>
-                          <div>
-                            <span className="text-[#555]">Last price</span>
-                            <p>{m.lastTradePrice > 0 ? `${(m.lastTradePrice * 100).toFixed(1)}¢` : '--'}</p>
-                          </div>
-                          {m.endDate && (
-                            <div>
-                              <span className="text-[#555]">Market ends</span>
-                              <p>{formatTimeLeft(m.endDate)}</p>
-                            </div>
-                          )}
-                          <div>
-                            <span className="text-[#555]">Reward period</span>
-                            <p>
-                              {m.rewardStartDate ?? '?'} → {m.rewardEndDate === '2500-12-31' ? '∞' : m.rewardEndDate ?? '?'}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
+                    {addr(r.address)}
+                  </a>
+                </td>
+                <td className="py-3 px-4 text-right font-mono">{formatCompact(r.amount1d)}</td>
+                <td className="py-3 px-4 text-right font-mono">{formatCompact(r.amount7d)}</td>
+                <td className="py-3 px-4 text-right font-mono">{formatCompact(r.amountAll)}</td>
+                <td className="py-3 px-4 text-right font-mono text-xs text-[#555]">
+                  {r.pct1d > 0 ? `${r.pct1d}%` : '—'}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
-        {markets.length === 0 && (
-          <p className="text-center text-[#555] py-8 text-sm">No LP reward markets found.</p>
-        )}
-
-        {hasMore && (
-          <div className="border-t border-[#333] px-5 py-3 flex items-center justify-between">
-            <p className="text-xs text-[#555] font-mono">Showing {visible.length} of {markets.length}</p>
-            <button className="text-xs border border-[#333] px-4 py-1.5 hover:text-white hover:border-white transition-colors text-[#999]" onClick={() => setPage(p => p + 1)}>
-              Load more
-            </button>
-          </div>
-        )}
-
-        {!hasMore && markets.length > PAGE_SIZE && (
-          <div className="border-t border-[#333] px-5 py-3">
-            <p className="text-xs text-[#555] font-mono">Showing all {markets.length} markets</p>
-          </div>
+        {topReceivers.length === 0 && (
+          <p className="text-center text-[#555] py-8 text-sm">No LP reward distributions found.</p>
         )}
       </div>
 
       <p className="mt-6 text-[11px] text-[#444] font-mono">
-        Source: CLOB rewards API + Gamma enrichment&ensp;·&ensp;updated{' '}
-        {new Date(data.fetchedAt).toLocaleString()}
+        Source: On-chain USDC.e Transfer events from LP rewards distributor&ensp;·&ensp;
+        Blocks {data.fromBlock.toLocaleString()} – {data.toBlock.toLocaleString()}&ensp;·&ensp;
+        updated {new Date(data.fetchedAt).toLocaleString()}
       </p>
     </>
   );
