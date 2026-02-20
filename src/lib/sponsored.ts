@@ -26,8 +26,8 @@ const RPC_ENDPOINTS = [
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 
-const CHUNK_SIZE = 50_000;
-const RPC_TIMEOUT_MS = 10_000;
+const CHUNK_SIZE = 500_000;
+const RPC_TIMEOUT_MS = 15_000;
 
 /* ─────── types ─────── */
 
@@ -132,7 +132,7 @@ async function fetchLogs(topic0: string, fromBlock: number, toBlock: number): Pr
     chunks.push({ from, to: Math.min(from + CHUNK_SIZE, toBlock) });
   }
 
-  const CONCURRENCY = 6;
+  const CONCURRENCY = 10;
   const allLogs: RawLog[] = [];
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
