@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const mr = await fetchMakerRebates(true);
-    results.maker = { ok: true, series: mr.overall.totalSeries, estRebates: mr.overall.estimatedDailyRebates };
+    results.maker = { ok: true, total1d: mr.overall.total1d, receivers: mr.overall.totalReceivers };
   } catch (e) {
     results.maker = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
   }
