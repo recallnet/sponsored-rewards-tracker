@@ -25,9 +25,8 @@ const RPC_ENDPOINTS = [
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 
-const CHUNK_SIZE = 9_999;
+const CHUNK_SIZE = 50_000;
 const RPC_TIMEOUT_MS = 10_000;
-const INTER_CHUNK_DELAY_MS = 150;
 
 /* ─────── types ─────── */
 
@@ -99,43 +98,47 @@ interface RawLog {
   blockNumber: string;
 }
 
+async function fetchLogsChunk(topic0: string, from: number, to: number): Promise<RawLog[]> {
+  for (const rpc of RPC_ENDPOINTS) {
+    try {
+      const body = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getLogs',
+        params: [{
+          address: REWARDS_CONTRACT,
+          topics: [topic0],
+          fromBlock: '0x' + from.toString(16),
+          toBlock: '0x' + to.toString(16),
+        }],
+      });
+      const res = await fetch(rpc, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+      });
+      const d = (await res.json()) as { result?: RawLog[]; error?: unknown };
+      if (d.result) return d.result;
+    } catch { continue; }
+  }
+  return [];
+}
+
 async function fetchLogs(topic0: string, fromBlock: number, toBlock: number): Promise<RawLog[]> {
-  const allLogs: RawLog[] = [];
+  const chunks: { from: number; to: number }[] = [];
   for (let from = fromBlock; from <= toBlock; from += CHUNK_SIZE + 1) {
-    const to = Math.min(from + CHUNK_SIZE, toBlock);
-    for (const rpc of RPC_ENDPOINTS) {
-      try {
-        const body = JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'eth_getLogs',
-          params: [
-            {
-              address: REWARDS_CONTRACT,
-              topics: [topic0],
-              fromBlock: '0x' + from.toString(16),
-              toBlock: '0x' + to.toString(16),
-            },
-          ],
-        });
-        const res = await fetch(rpc, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-          signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-        });
-        const d = (await res.json()) as { result?: RawLog[]; error?: unknown };
-        if (d.result) {
-          allLogs.push(...d.result);
-          break;
-        }
-      } catch {
-        continue;
-      }
-    }
-    if (INTER_CHUNK_DELAY_MS > 0) {
-      await new Promise(r => setTimeout(r, INTER_CHUNK_DELAY_MS));
-    }
+    chunks.push({ from, to: Math.min(from + CHUNK_SIZE, toBlock) });
+  }
+
+  const CONCURRENCY = 6;
+  const allLogs: RawLog[] = [];
+  for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+    const batch = chunks.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(c => fetchLogsChunk(topic0, c.from, c.to))
+    );
+    for (const logs of results) allLogs.push(...logs);
   }
   return allLogs;
 }
@@ -250,10 +253,11 @@ export async function fetchSponsoredRewards(force = false): Promise<SponsoredSna
   const latestBlock = await getLatestBlock();
   const fromBlock = cached?.toBlock ? cached.toBlock + 1 : DEPLOY_BLOCK;
 
-  const sponsoredLogs = await fetchLogs(SPONSORED_TOPIC, fromBlock, latestBlock);
+  const [sponsoredLogs, withdrawnLogs] = await Promise.all([
+    fetchLogs(SPONSORED_TOPIC, fromBlock, latestBlock),
+    fetchLogs(WITHDRAWN_TOPIC, fromBlock, latestBlock),
+  ]);
   const newEvents = sponsoredLogs.map(decodeSponsoredLog);
-
-  const withdrawnLogs = await fetchLogs(WITHDRAWN_TOPIC, fromBlock, latestBlock);
 
   const withdrawals = withdrawnLogs.map(decodeWithdrawnLog);
   const withdrawMap = new Map<string, WithdrawnDecoded>();

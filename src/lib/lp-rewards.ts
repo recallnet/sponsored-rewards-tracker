@@ -11,7 +11,7 @@ const POLYMARKET_BASE = 'https://polymarket.com';
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const REQUEST_TIMEOUT_MS = 8_000;
 const GAMMA_BATCH_SIZE = 50;
-const MAX_REWARD_PAGES = 250;
+const MAX_REWARD_PAGES = 10;
 
 /* ─────── types ─────── */
 
@@ -165,7 +165,7 @@ async function enrichWithGamma(conditionIds: string[]): Promise<Map<string, Gamm
     batches.push(conditionIds.slice(i, i + GAMMA_BATCH_SIZE));
   }
 
-  const CONCURRENCY = 5;
+  const CONCURRENCY = 10;
   for (let i = 0; i < batches.length; i += CONCURRENCY) {
     const chunk = batches.slice(i, i + CONCURRENCY);
     const results = await Promise.all(chunk.map(fetchGammaBatch));
