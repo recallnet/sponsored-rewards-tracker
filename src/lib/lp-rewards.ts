@@ -75,25 +75,35 @@ interface ClobRewardsResponse {
   count: number;
 }
 
+async function fetchClobPage(cursor?: string): Promise<ClobRewardsResponse> {
+  const url = cursor
+    ? `${CLOB_BASE}/rewards/markets/current?next_cursor=${cursor}`
+    : `${CLOB_BASE}/rewards/markets/current`;
+
+  const res = await fetch(url, {
+    headers: {
+      'accept': 'application/json',
+      'user-agent': 'Mozilla/5.0',
+    },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`CLOB ${res.status}: ${body.slice(0, 200)}`);
+  }
+
+  return (await res.json()) as ClobRewardsResponse;
+}
+
 async function fetchAllClobRewards(): Promise<ClobRewardEntry[]> {
   const all: ClobRewardEntry[] = [];
   let cursor: string | undefined = undefined;
   const maxPages = 20;
 
   for (let page = 0; page < maxPages; page++) {
-    const params = new URLSearchParams();
-    if (cursor) params.set('next_cursor', cursor);
-    const url = `${CLOB_BASE}/rewards/markets/current${params.toString() ? '?' + params.toString() : ''}`;
-
-    const res = await fetch(url, {
-      headers: { accept: 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`CLOB rewards fetch failed (${res.status})`);
-
-    const payload = (await res.json()) as ClobRewardsResponse;
+    const payload = await fetchClobPage(cursor);
     all.push(...payload.data);
-
     if (!payload.next_cursor || payload.data.length === 0) break;
     cursor = payload.next_cursor;
   }
