@@ -3,5 +3,11 @@
     "src/app/api/**/*.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/refresh",
+      "schedule": "0 0 * * *"
+    }
+  ]
 }
