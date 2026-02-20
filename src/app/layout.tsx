@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Sponsored Rewards Tracker',
-  description: 'On-chain Polymarket sponsored rewards tracker',
+  title: 'Polymarket Rewards Tracker',
+  description: 'Sponsored & LP rewards tracker for Polymarket',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

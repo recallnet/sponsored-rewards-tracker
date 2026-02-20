@@ -4,6 +4,10 @@ import { Fragment, useState } from 'react';
 import useSWR from 'swr';
 import { formatCurrency } from '@/lib/utils';
 
+/* ─────── Shared types ─────── */
+
+type Tab = 'sponsored' | 'lp';
+
 interface SponsoredEvent {
   marketId: string;
   sponsor: string;
@@ -40,6 +44,45 @@ interface SponsoredSnapshot {
   toBlock: number;
 }
 
+interface LpRewardMarket {
+  conditionId: string;
+  question: string;
+  eventSlug?: string;
+  dailyRate: number;
+  nativeDailyRate: number;
+  sponsoredDailyRate: number;
+  maxSpread: number;
+  minSize: number;
+  rewardStartDate?: string;
+  rewardEndDate?: string;
+  liquidity: number;
+  volume24h: number;
+  spread: number;
+  bestBid: number;
+  bestAsk: number;
+  lastTradePrice: number;
+  endDate?: string;
+  outcomes?: string;
+  outcomePrices?: string;
+}
+
+interface LpOverall {
+  totalMarkets: number;
+  totalDailyRewards: number;
+  avgDailyRate: number;
+  medianDailyRate: number;
+  avgMaxSpread: number;
+  avgMinSize: number;
+}
+
+interface LpRewardsSnapshot {
+  markets: LpRewardMarket[];
+  overall: LpOverall;
+  fetchedAt: string;
+}
+
+/* ─────── Helpers ─────── */
+
 const PAGE_SIZE = 50;
 
 const fetcher = async <T,>(url: string): Promise<T> => {
@@ -74,42 +117,83 @@ function addr(a: string): string {
   return a.length <= 12 ? a : `${a.slice(0, 6)}...${a.slice(-4)}`;
 }
 
-function marketUrl(event: SponsoredEvent): string | null {
-  if (event.eventSlug) return `https://polymarket.com/event/${event.eventSlug}`;
+function polymarketUrl(eventSlug?: string): string | null {
+  if (eventSlug) return `https://polymarket.com/event/${eventSlug}`;
   return null;
 }
 
+function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return formatCurrency(n);
+}
+
+/* ─────── Main component ─────── */
+
 export function OpportunitiesTable() {
-  const { data, error, isLoading, mutate } = useSWR<SponsoredSnapshot>('/api/sponsored', fetcher, {
-    refreshInterval: 30_000,
-  });
+  const [activeTab, setActiveTab] = useState<Tab>('sponsored');
+
+  return (
+    <div>
+      {/* ─── tabs ─── */}
+      <div className="flex gap-0 border-b border-[#333] mb-10">
+        <TabButton
+          active={activeTab === 'sponsored'}
+          onClick={() => setActiveTab('sponsored')}
+        >
+          Sponsored Rewards
+        </TabButton>
+        <TabButton
+          active={activeTab === 'lp'}
+          onClick={() => setActiveTab('lp')}
+        >
+          LP Rewards
+        </TabButton>
+      </div>
+
+      {activeTab === 'sponsored' ? <SponsoredTab /> : <LpTab />}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-6 py-3 text-sm tracking-wide transition-colors border-b-2 -mb-[1px] ${
+        active
+          ? 'border-white text-white'
+          : 'border-transparent text-[#555] hover:text-[#999]'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ═══════════════════════════════════════
+   SPONSORED TAB
+   ═══════════════════════════════════════ */
+
+function SponsoredTab() {
+  const { data, error, isLoading, mutate } = useSWR<SponsoredSnapshot>(
+    '/api/sponsored',
+    fetcher,
+    { refreshInterval: 30_000 }
+  );
   const [expanded, setExpanded] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="h-16 bg-[#111]" />
-        <div className="h-10 bg-[#111] w-2/3" />
-        <div className="space-y-2 mt-8">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="h-10 bg-[#111]" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="border border-[#333] p-6">
-        <p className="text-sm">Failed to load sponsored rewards.</p>
-        <p className="text-xs text-[#555] mt-1">
-          {error instanceof Error ? error.message : 'Unknown error'}
-        </p>
-      </div>
-    );
-  }
+  if (isLoading) return <Skeleton />;
+  if (error || !data) return <ErrorBlock message={error instanceof Error ? error.message : undefined} label="sponsored rewards" />;
 
   const { overall, events } = data;
   const active = events
@@ -134,8 +218,8 @@ export function OpportunitiesTable() {
     .slice(0, 6);
 
   return (
-    <div>
-      {/* ─── hero ─── */}
+    <>
+      {/* hero */}
       <div className="mb-14">
         <p className="text-[11px] tracking-[0.3em] uppercase text-[#555] mb-3">
           Total Sponsored Rewards
@@ -151,7 +235,7 @@ export function OpportunitiesTable() {
         </p>
       </div>
 
-      {/* ─── stats grid ─── */}
+      {/* stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 border border-[#333] mb-14">
         <Stat label="Net Amount" value={formatCurrency(overall.netAmountUsdc)} />
         <Stat label="Returned" value={formatCurrency(overall.totalReturnedUsdc)} border />
@@ -159,7 +243,7 @@ export function OpportunitiesTable() {
         <Stat label="Active Now" value={`${active.length}`} border />
       </div>
 
-      {/* ─── markets table ─── */}
+      {/* markets table */}
       <div className="mb-4 flex items-end justify-between">
         <p className="text-[11px] tracking-[0.3em] uppercase text-[#555]">
           Active Markets ({active.length})
@@ -189,7 +273,7 @@ export function OpportunitiesTable() {
               const timeLeft = formatTimeLeft(r.endTime);
               const pct =
                 r.amountUsdc > 0 ? ((r.consumedUsdc / r.amountUsdc) * 100).toFixed(1) : '0';
-              const url = marketUrl(r);
+              const url = polymarketUrl(r.eventSlug);
 
               return (
                 <Fragment key={r.txHash}>
@@ -294,7 +378,7 @@ export function OpportunitiesTable() {
         )}
       </div>
 
-      {/* ─── top sponsors ─── */}
+      {/* top sponsors */}
       {topSponsors.length > 0 && (
         <div className="mt-14">
           <p className="text-[11px] tracking-[0.3em] uppercase text-[#555] mb-4">Top Sponsors</p>
@@ -324,20 +408,239 @@ export function OpportunitiesTable() {
         </div>
       )}
 
-      {/* ─── footer ─── */}
       <p className="mt-6 text-[11px] text-[#444] font-mono">
         Polygon blocks {data.fromBlock.toLocaleString()} → {data.toBlock.toLocaleString()}
         &ensp;·&ensp;updated {new Date(data.fetchedAt).toLocaleString()}
       </p>
-    </div>
+    </>
   );
 }
+
+/* ═══════════════════════════════════════
+   LP REWARDS TAB
+   ═══════════════════════════════════════ */
+
+function LpTab() {
+  const { data, error, isLoading, mutate } = useSWR<LpRewardsSnapshot>(
+    '/api/lp-rewards',
+    fetcher,
+    { refreshInterval: 30_000 }
+  );
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  if (isLoading) return <Skeleton />;
+  if (error || !data) return <ErrorBlock message={error instanceof Error ? error.message : undefined} label="LP rewards" />;
+
+  const { overall, markets } = data;
+  const totalPages = Math.ceil(markets.length / PAGE_SIZE);
+  const visible = markets.slice(0, page * PAGE_SIZE);
+  const hasMore = page < totalPages;
+
+  return (
+    <>
+      {/* hero */}
+      <div className="mb-14">
+        <p className="text-[11px] tracking-[0.3em] uppercase text-[#555] mb-3">
+          Total Daily LP Rewards
+        </p>
+        <p className="text-5xl md:text-7xl font-bold tracking-tight leading-none">
+          {formatCurrency(overall.totalDailyRewards)}
+          <span className="text-2xl md:text-3xl text-[#555] font-normal">/day</span>
+        </p>
+        <p className="text-sm text-[#555] mt-4 font-mono">
+          {overall.totalMarkets.toLocaleString()} markets&ensp;·&ensp;
+          avg {formatCurrency(overall.avgDailyRate)}/day&ensp;·&ensp;
+          median {formatCurrency(overall.medianDailyRate)}/day&ensp;·&ensp; updated{' '}
+          {formatRelative(data.fetchedAt)}
+        </p>
+      </div>
+
+      {/* stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 border border-[#333] mb-14">
+        <Stat label="Total Markets" value={overall.totalMarkets.toLocaleString()} />
+        <Stat label="Daily Budget" value={formatCurrency(overall.totalDailyRewards)} border />
+        <Stat label="Avg Max Spread" value={`${overall.avgMaxSpread.toFixed(1)}¢`} border />
+        <Stat label="Avg Min Size" value={`${Math.round(overall.avgMinSize)} shares`} border />
+      </div>
+
+      {/* markets table */}
+      <div className="mb-4 flex items-end justify-between">
+        <p className="text-[11px] tracking-[0.3em] uppercase text-[#555]">
+          Reward Markets ({markets.length})
+        </p>
+        <button
+          className="text-xs text-[#555] border border-[#333] px-3 py-1.5 hover:text-white hover:border-white transition-colors"
+          onClick={() => mutate(fetcher('/api/lp-rewards?force=1'), { revalidate: false })}
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="overflow-x-auto border border-[#333]">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[11px] text-[#555] uppercase tracking-wider border-b border-[#333]">
+              <th className="py-3 px-5 pr-4">Market</th>
+              <th className="py-3 px-4 text-right">Daily Rate</th>
+              <th className="py-3 px-4 text-right">Max Spread</th>
+              <th className="py-3 px-4 text-right">Min Size</th>
+              <th className="py-3 px-4 text-right">Liquidity</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#222]">
+            {visible.map(m => {
+              const isOpen = expanded === m.conditionId;
+              const url = polymarketUrl(m.eventSlug);
+
+              return (
+                <Fragment key={m.conditionId}>
+                  <tr
+                    className="hover:bg-[#0a0a0a] cursor-pointer transition-colors"
+                    onClick={() =>
+                      setExpanded(p => (p === m.conditionId ? null : m.conditionId))
+                    }
+                  >
+                    <td className="py-3 px-5 pr-4">
+                      {url ? (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {m.question}
+                        </a>
+                      ) : (
+                        <span>{m.question}</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono">
+                      {formatCurrency(m.dailyRate)}/d
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono">
+                      {m.maxSpread.toFixed(1)}¢
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono">
+                      {m.minSize}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono">
+                      {m.liquidity > 0 ? formatCompact(m.liquidity) : '--'}
+                    </td>
+                  </tr>
+
+                  {isOpen && (
+                    <tr className="bg-[#080808]">
+                      <td colSpan={5} className="px-5 py-4 text-[#999]">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
+                          <div>
+                            <span className="text-[#555]">Native rate</span>
+                            <p>{formatCurrency(m.nativeDailyRate)}/d</p>
+                          </div>
+                          {m.sponsoredDailyRate > 0 && (
+                            <div>
+                              <span className="text-[#555]">Sponsored rate</span>
+                              <p>{formatCurrency(m.sponsoredDailyRate)}/d</p>
+                            </div>
+                          )}
+                          <div>
+                            <span className="text-[#555]">Volume 24h</span>
+                            <p>{m.volume24h > 0 ? formatCompact(m.volume24h) : '--'}</p>
+                          </div>
+                          <div>
+                            <span className="text-[#555]">Spread</span>
+                            <p>{m.spread > 0 ? `${(m.spread * 100).toFixed(1)}¢` : '--'}</p>
+                          </div>
+                          <div>
+                            <span className="text-[#555]">Last price</span>
+                            <p>{m.lastTradePrice > 0 ? `${(m.lastTradePrice * 100).toFixed(1)}¢` : '--'}</p>
+                          </div>
+                          {m.endDate && (
+                            <div>
+                              <span className="text-[#555]">Market ends</span>
+                              <p>{formatTimeLeft(m.endDate)}</p>
+                            </div>
+                          )}
+                          <div>
+                            <span className="text-[#555]">Reward period</span>
+                            <p>
+                              {m.rewardStartDate ?? '?'} → {m.rewardEndDate === '2500-12-31' ? '∞' : m.rewardEndDate ?? '?'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {markets.length === 0 && (
+          <p className="text-center text-[#555] py-8 text-sm">No LP reward markets found.</p>
+        )}
+
+        {hasMore && (
+          <div className="border-t border-[#333] px-5 py-3 flex items-center justify-between">
+            <p className="text-xs text-[#555] font-mono">
+              Showing {visible.length} of {markets.length}
+            </p>
+            <button
+              className="text-xs border border-[#333] px-4 py-1.5 hover:text-white hover:border-white transition-colors text-[#999]"
+              onClick={() => setPage(p => p + 1)}
+            >
+              Load more
+            </button>
+          </div>
+        )}
+
+        {!hasMore && markets.length > PAGE_SIZE && (
+          <div className="border-t border-[#333] px-5 py-3">
+            <p className="text-xs text-[#555] font-mono">Showing all {markets.length} markets</p>
+          </div>
+        )}
+      </div>
+
+      <p className="mt-6 text-[11px] text-[#444] font-mono">
+        Source: CLOB rewards API + Gamma enrichment&ensp;·&ensp;updated{' '}
+        {new Date(data.fetchedAt).toLocaleString()}
+      </p>
+    </>
+  );
+}
+
+/* ─────── Shared sub-components ─────── */
 
 function Stat({ label, value, border }: { label: string; value: string; border?: boolean }) {
   return (
     <div className={`px-5 py-4 ${border ? 'border-l border-[#333]' : ''}`}>
       <p className="text-[11px] text-[#555] uppercase tracking-wider mb-1">{label}</p>
       <p className="text-lg font-mono font-bold">{value}</p>
+    </div>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-16 bg-[#111]" />
+      <div className="h-10 bg-[#111] w-2/3" />
+      <div className="space-y-2 mt-8">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div key={i} className="h-10 bg-[#111]" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ErrorBlock({ message, label }: { message?: string; label: string }) {
+  return (
+    <div className="border border-[#333] p-6">
+      <p className="text-sm">Failed to load {label}.</p>
+      <p className="text-xs text-[#555] mt-1">{message ?? 'Unknown error'}</p>
     </div>
   );
 }
