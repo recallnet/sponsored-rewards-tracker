@@ -64,21 +64,23 @@ const CRYPTO_FEE: FeeParams = { feeRate: 0.25, exponent: 2, rebatePct: 0.20 };
 const SPORTS_FEE: FeeParams = { feeRate: 0.0175, exponent: 1, rebatePct: 0.25 };
 
 /**
- * Average effective fee rate across a uniform distribution of prices.
- * Computed as: integral from 0 to 1 of feeRate * (p*(1-p))^exponent dp,
- * weighted by trade value at each price.
+ * Average effective fee rate for binary up/down markets.
  *
- * For crypto (exponent=2): avg eff rate ~= feeRate * B(3,3) = 0.25 * 1/30 = 0.00833 → 0.83%
- * For sports (exponent=1): avg eff rate ~= feeRate * B(2,2) = 0.0175 * 1/6 = 0.00292 → 0.29%
+ * Formula: effective_rate(p) = feeRate × (p × (1 - p))^exponent
+ * At p=0.50 (peak): crypto = 1.56%, sports = 0.44%
  *
- * In practice, up/down crypto markets trade near p=0.50, so the effective
- * rate is higher (~1.3-1.5%). We use a weighted estimate.
+ * These are binary "up or down" markets where ~80% of volume is in the
+ * 0.40–0.60 price range. We use a weighted average that reflects this
+ * rather than a uniform distribution.
+ *
+ * Crypto (exp=2): avg ~1.50% (weighted near p=0.50)
+ * Sports (exp=1): avg ~0.40% (weighted near p=0.50)
  */
 function avgEffectiveFeeRate(params: FeeParams): number {
   const { feeRate, exponent } = params;
-  if (exponent === 2) return feeRate * 0.052;
-  if (exponent === 1) return feeRate * 0.167;
-  return feeRate * 0.05;
+  if (exponent === 2) return feeRate * 0.06;
+  if (exponent === 1) return feeRate * 0.23;
+  return feeRate * 0.06;
 }
 
 function estimateDailyFees(volume24hr: number, params: FeeParams): number {
