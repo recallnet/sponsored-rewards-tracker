@@ -111,6 +111,76 @@ async function fetchAllClobRewards(): Promise<ClobRewardEntry[]> {
   return all;
 }
 
+/* ─────── Gamma-only fallback ─────── */
+
+interface GammaRewardConfig {
+  rewardsDailyRate?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+interface GammaFullMarket extends GammaMarket {
+  conditionId?: string;
+  rewardsMinSize?: number;
+  rewardsMaxSpread?: number;
+  clobRewards?: GammaRewardConfig[];
+}
+
+let __gammaFallbackCache: Map<string, GammaMarket> | undefined;
+
+async function fetchGammaRewardMarkets(): Promise<ClobRewardEntry[]> {
+  const pageSize = 500;
+  const maxPages = 10;
+  const entries: ClobRewardEntry[] = [];
+  const gammaCache = new Map<string, GammaMarket>();
+
+  for (let page = 0; page < maxPages; page++) {
+    const offset = page * pageSize;
+    const url = `${GAMMA_BASE}/markets?active=true&closed=false&limit=${pageSize}&offset=${offset}`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      if (!res.ok) break;
+      const markets = (await res.json()) as GammaFullMarket[];
+      if (!Array.isArray(markets) || markets.length === 0) break;
+
+      for (const m of markets) {
+        if (m.conditionId) gammaCache.set(m.conditionId, m);
+
+        const minSize = m.rewardsMinSize;
+        const maxSpread = m.rewardsMaxSpread;
+        if (!minSize || !maxSpread) continue;
+
+        const reward = m.clobRewards?.[0];
+        const dailyRate = reward?.rewardsDailyRate ?? 0;
+        if (dailyRate <= 0) continue;
+
+        entries.push({
+          condition_id: m.conditionId ?? '',
+          rewards_config: [{
+            asset_address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+            start_date: reward?.startDate ?? '',
+            end_date: reward?.endDate ?? '',
+            rate_per_day: dailyRate,
+            total_rewards: 0,
+            id: 0,
+          }],
+          rewards_max_spread: maxSpread,
+          rewards_min_size: minSize,
+          native_daily_rate: dailyRate,
+          total_daily_rate: dailyRate,
+        });
+      }
+
+      if (markets.length < pageSize) break;
+    } catch {
+      break;
+    }
+  }
+
+  __gammaFallbackCache = gammaCache;
+  return entries;
+}
+
 /* ─────── Gamma enrichment ─────── */
 
 interface GammaMarket {
@@ -216,8 +286,15 @@ export async function fetchLpRewards(force = false): Promise<LpRewardsSnapshot> 
     if (age < STALE_MS) return cached;
   }
 
-  const entries = await fetchAllClobRewards();
-  const gammaMap = await enrichWithGamma(entries);
+  let entries: ClobRewardEntry[];
+  let gammaMap: Map<string, GammaMarket>;
+  try {
+    entries = await fetchAllClobRewards();
+    gammaMap = await enrichWithGamma(entries);
+  } catch {
+    entries = await fetchGammaRewardMarkets();
+    gammaMap = __gammaFallbackCache ?? new Map();
+  }
 
   const markets = entries
     .filter(e => e.total_daily_rate > 0)
