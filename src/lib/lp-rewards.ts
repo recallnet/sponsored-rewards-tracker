@@ -120,27 +120,41 @@ interface GammaMarket {
   outcomePrices?: string;
 }
 
+async function fetchGammaBatch(
+  batch: string[]
+): Promise<GammaMarket[]> {
+  const qs = batch.map(id => `condition_ids=${id}`).join('&');
+  try {
+    const res = await fetch(
+      `${GAMMA_BASE}/markets?${qs}&limit=${batch.length}`,
+      { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
+    );
+    if (!res.ok) return [];
+    return (await res.json()) as GammaMarket[];
+  } catch {
+    return [];
+  }
+}
+
 async function enrichWithGamma(
   entries: ClobRewardEntry[]
 ): Promise<Map<string, GammaMarket>> {
   const conditionIds = entries.map(e => e.condition_id);
   const map = new Map<string, GammaMarket>();
+  const batches: string[][] = [];
 
   for (let i = 0; i < conditionIds.length; i += GAMMA_BATCH_SIZE) {
-    const batch = conditionIds.slice(i, i + GAMMA_BATCH_SIZE);
-    const qs = batch.map(id => `condition_ids=${id}`).join('&');
-    try {
-      const res = await fetch(
-        `${GAMMA_BASE}/markets?${qs}&limit=${batch.length}`,
-        { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }
-      );
-      if (!res.ok) continue;
-      const markets = (await res.json()) as GammaMarket[];
+    batches.push(conditionIds.slice(i, i + GAMMA_BATCH_SIZE));
+  }
+
+  const CONCURRENCY = 5;
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const chunk = batches.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(chunk.map(fetchGammaBatch));
+    for (const markets of results) {
       for (const m of markets) {
         if (m.conditionId) map.set(m.conditionId, m);
       }
-    } catch {
-      /* best-effort */
     }
   }
 
