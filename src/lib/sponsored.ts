@@ -26,7 +26,7 @@ const RPC_ENDPOINTS = [
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 
-const CHUNK_SIZE = 10_000;
+const CHUNK_SIZE = 40_000;
 const RPC_TIMEOUT_MS = 15_000;
 
 /* ─────── types ─────── */
@@ -204,25 +204,31 @@ interface GammaMarket {
 async function enrichMarketNames(events: SponsoredEvent[]): Promise<void> {
   const conditionIds = [...new Set(events.map(e => e.marketId))];
   const batchSize = 50;
+  const CONCURRENCY = 10;
   const map = new Map<string, { question: string; slug: string; eventSlug: string }>();
 
+  const batches: string[][] = [];
   for (let i = 0; i < conditionIds.length; i += batchSize) {
-    const batch = conditionIds.slice(i, i + batchSize);
-    const qs = batch.map(id => `condition_ids=${id}`).join('&');
-    try {
-      const res = await fetch(`${GAMMA_BASE}/markets?${qs}&limit=${batch.length}`, {
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!res.ok) continue;
-      const markets = (await res.json()) as GammaMarket[];
-      for (const m of markets) {
-        const cid = m.conditionId ?? '';
-        const eventSlug = m.events?.[0]?.slug ?? '';
-        if (cid) map.set(cid, { question: m.question ?? '', slug: m.slug ?? '', eventSlug });
-      }
-    } catch {
-      /* best-effort */
-    }
+    batches.push(conditionIds.slice(i, i + batchSize));
+  }
+
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const chunk = batches.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map(async (batch) => {
+      const qs = batch.map(id => `condition_ids=${id}`).join('&');
+      try {
+        const res = await fetch(`${GAMMA_BASE}/markets?${qs}&limit=${batch.length}`, {
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (!res.ok) return;
+        const markets = (await res.json()) as GammaMarket[];
+        for (const m of markets) {
+          const cid = m.conditionId ?? '';
+          const eventSlug = m.events?.[0]?.slug ?? '';
+          if (cid) map.set(cid, { question: m.question ?? '', slug: m.slug ?? '', eventSlug });
+        }
+      } catch { /* best-effort */ }
+    }));
   }
 
   for (const ev of events) {
