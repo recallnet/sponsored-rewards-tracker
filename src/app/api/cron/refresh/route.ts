@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchLpRewards } from '@/lib/lp-rewards';
 import { fetchSponsoredRewards } from '@/lib/sponsored';
+import { fetchMakerRebates } from '@/lib/maker-rebates';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -33,6 +34,13 @@ export async function GET(request: NextRequest) {
     results.sponsored = { ok: true, events: sp.overall.totalEvents, markets: sp.overall.uniqueMarkets };
   } catch (e) {
     results.sponsored = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+
+  try {
+    const mr = await fetchMakerRebates(true);
+    results.maker = { ok: true, series: mr.overall.totalSeries, estRebates: mr.overall.estimatedDailyRebates };
+  } catch (e) {
+    results.maker = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
   }
 
   return NextResponse.json({ refreshedAt: new Date().toISOString(), ...results });
