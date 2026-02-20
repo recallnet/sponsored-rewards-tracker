@@ -20,7 +20,6 @@ const BLOCKS_PER_DAY = 43_200;
 
 const RPC_ENDPOINTS = [
   'https://polygon-bor-rpc.publicnode.com',
-  'https://1rpc.io/matic',
   'https://rpc-mainnet.matic.quiknode.pro',
   'https://polygon.drpc.org',
 ];
@@ -133,7 +132,7 @@ async function fetchAllLogs(
   for (let from = fromBlock; from <= toBlock; from += CHUNK_SIZE + 1) {
     chunks.push({ from, to: Math.min(from + CHUNK_SIZE, toBlock) });
   }
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 4;
   const allLogs: RawLog[] = [];
   for (let i = 0; i < chunks.length; i += CONCURRENCY) {
     const batch = chunks.slice(i, i + CONCURRENCY);
