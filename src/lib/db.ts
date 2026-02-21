@@ -3,6 +3,7 @@ import { neon } from '@neondatabase/serverless';
 type SQL = ReturnType<typeof neon>;
 
 let _sql: SQL | null = null;
+let _tableReady = false;
 
 function getSql(): SQL | null {
   if (_sql) return _sql;
@@ -15,9 +16,8 @@ function getSql(): SQL | null {
   return _sql;
 }
 
-export async function initDb(): Promise<void> {
-  const sql = getSql();
-  if (!sql) return;
+async function ensureTable(sql: SQL): Promise<void> {
+  if (_tableReady) return;
   await sql`
     CREATE TABLE IF NOT EXISTS reward_cache (
       key   TEXT PRIMARY KEY,
@@ -26,12 +26,20 @@ export async function initDb(): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `;
+  _tableReady = true;
+}
+
+export async function initDb(): Promise<void> {
+  const sql = getSql();
+  if (!sql) return;
+  await ensureTable(sql);
 }
 
 export async function loadCache(key: string): Promise<{ value: unknown; lastBlock: number } | null> {
   const sql = getSql();
   if (!sql) return null;
   try {
+    await ensureTable(sql);
     const rows = await sql`
       SELECT value, last_block FROM reward_cache WHERE key = ${key}
     ` as unknown as { value: unknown; last_block: string | number }[];
@@ -50,6 +58,7 @@ export async function saveCache(key: string, value: unknown, lastBlock: number):
   const sql = getSql();
   if (!sql) return;
   try {
+    await ensureTable(sql);
     await sql`
       INSERT INTO reward_cache (key, value, last_block, updated_at)
       VALUES (${key}, ${JSON.stringify(value)}, ${lastBlock}, NOW())
