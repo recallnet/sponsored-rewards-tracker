@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchLpRewards } from '@/lib/lp-rewards';
 import { fetchSponsoredRewards } from '@/lib/sponsored';
 import { fetchMakerRebates } from '@/lib/maker-rebates';
+import { initDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  await initDb().catch(e => console.error('[cron] initDb error:', e));
 
   const results: Record<string, unknown> = {};
 

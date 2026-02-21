@@ -294,6 +294,8 @@ async function buildSnapshot(): Promise<LpRewardsSnapshot> {
 
 /* ─────── cache ─────── */
 
+import { loadCache, saveCache } from './db';
+
 interface LpCacheData {
   dailyTotals: LpDailyTotal[];
   receiverAll: Map<string, number>;
@@ -309,11 +311,40 @@ declare global {
 
 const STALE_MS = 5 * 60 * 1000;
 
+async function hydrateFromDb(): Promise<void> {
+  if (globalThis.__lpRewardCache) return;
+  const row = await loadCache('lp');
+  if (!row) return;
+  const v = row.value as {
+    dailyTotals: LpDailyTotal[];
+    receiverAll: Record<string, number>;
+  };
+  globalThis.__lpRewardCache = {
+    dailyTotals: v.dailyTotals ?? [],
+    receiverAll: new Map(Object.entries(v.receiverAll ?? {})),
+    lastScannedBlock: row.lastBlock,
+  };
+  console.log(`[lp-rewards] Hydrated from DB: ${v.dailyTotals?.length ?? 0} days, block ${row.lastBlock}`);
+}
+
+async function persistToDb(): Promise<void> {
+  const cache = globalThis.__lpRewardCache;
+  if (!cache) return;
+  const serialized = {
+    dailyTotals: cache.dailyTotals,
+    receiverAll: Object.fromEntries(cache.receiverAll),
+  };
+  await saveCache('lp', serialized, cache.lastScannedBlock);
+}
+
 export async function fetchLpRewards(force = false): Promise<LpRewardsSnapshot> {
   const cached = globalThis.__lpRewardsSnapshot;
   if (!force && cached) {
     const age = Date.now() - new Date(cached.fetchedAt).getTime();
     if (age < STALE_MS) return cached;
   }
-  return buildSnapshot();
+  await hydrateFromDb();
+  const snapshot = await buildSnapshot();
+  persistToDb().catch(e => console.error('[lp-rewards] persist error:', e));
+  return snapshot;
 }

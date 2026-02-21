@@ -243,12 +243,51 @@ async function enrichMarketNames(events: SponsoredEvent[]): Promise<void> {
 
 /* ─────── main scan ─────── */
 
+import { loadCache, saveCache } from './db';
+
 declare global {
   // eslint-disable-next-line no-var
   var __sponsoredSnapshot: SponsoredSnapshot | undefined;
 }
 
 const STALE_MS = 5 * 60 * 1000;
+
+async function hydrateFromDb(): Promise<void> {
+  if (globalThis.__sponsoredSnapshot) return;
+  const row = await loadCache('sponsored');
+  if (!row) return;
+  const v = row.value as { events: SponsoredEvent[] };
+  if (!v.events?.length) return;
+  globalThis.__sponsoredSnapshot = {
+    events: v.events,
+    overall: computeOverall(v.events),
+    fetchedAt: new Date().toISOString(),
+    fromBlock: DEPLOY_BLOCK,
+    toBlock: row.lastBlock,
+  };
+  console.log(`[sponsored] Hydrated from DB: ${v.events.length} events, block ${row.lastBlock}`);
+}
+
+function computeOverall(events: SponsoredEvent[]) {
+  const uniqueSponsors = new Set(events.map(e => e.sponsor.toLowerCase()));
+  const uniqueMarkets = new Set(events.map(e => e.marketId));
+  const totalAmountUsdc = events.reduce((s, e) => s + e.amountUsdc, 0);
+  const totalReturnedUsdc = events.reduce((s, e) => s + e.returnedUsdc, 0);
+  const totalConsumedUsdc = events.reduce((s, e) => s + e.consumedUsdc, 0);
+  return {
+    totalEvents: events.length,
+    uniqueSponsors: uniqueSponsors.size,
+    uniqueMarkets: uniqueMarkets.size,
+    totalAmountUsdc,
+    netAmountUsdc: totalAmountUsdc - totalReturnedUsdc,
+    totalReturnedUsdc,
+    totalConsumedUsdc,
+  };
+}
+
+async function persistToDb(events: SponsoredEvent[], lastBlock: number): Promise<void> {
+  await saveCache('sponsored', { events }, lastBlock);
+}
 
 export async function fetchSponsoredRewards(force = false): Promise<SponsoredSnapshot> {
   const cached = globalThis.__sponsoredSnapshot;
@@ -257,8 +296,11 @@ export async function fetchSponsoredRewards(force = false): Promise<SponsoredSna
     if (age < STALE_MS) return cached;
   }
 
+  await hydrateFromDb();
+  const hydrated = globalThis.__sponsoredSnapshot;
+
   const latestBlock = await getLatestBlock();
-  const fromBlock = cached?.toBlock ? cached.toBlock + 1 : DEPLOY_BLOCK;
+  const fromBlock = hydrated?.toBlock ? hydrated.toBlock + 1 : DEPLOY_BLOCK;
 
   const [sponsoredLogs, withdrawnLogs] = await Promise.all([
     fetchLogs(SPONSORED_TOPIC, fromBlock, latestBlock),
@@ -283,9 +325,9 @@ export async function fetchSponsoredRewards(force = false): Promise<SponsoredSna
     }
   }
 
-  const allEvents = cached ? [...cached.events, ...newEvents] : newEvents;
+  const allEvents = hydrated ? [...hydrated.events, ...newEvents] : newEvents;
 
-  if (cached && withdrawals.length > 0) {
+  if (hydrated && withdrawals.length > 0) {
     for (const ev of allEvents) {
       const key = `${ev.marketId}:${ev.sponsor.toLowerCase()}`;
       const w = withdrawMap.get(key);
@@ -299,28 +341,15 @@ export async function fetchSponsoredRewards(force = false): Promise<SponsoredSna
 
   await enrichMarketNames(allEvents.filter(e => !e.marketQuestion));
 
-  const uniqueSponsors = new Set(allEvents.map(e => e.sponsor.toLowerCase()));
-  const uniqueMarkets = new Set(allEvents.map(e => e.marketId));
-  const totalAmountUsdc = allEvents.reduce((s, e) => s + e.amountUsdc, 0);
-  const totalReturnedUsdc = allEvents.reduce((s, e) => s + e.returnedUsdc, 0);
-  const totalConsumedUsdc = allEvents.reduce((s, e) => s + e.consumedUsdc, 0);
-
   const snapshot: SponsoredSnapshot = {
     events: allEvents.sort((a, b) => b.amountUsdc - a.amountUsdc),
-    overall: {
-      totalEvents: allEvents.length,
-      uniqueSponsors: uniqueSponsors.size,
-      uniqueMarkets: uniqueMarkets.size,
-      totalAmountUsdc,
-      netAmountUsdc: totalAmountUsdc - totalReturnedUsdc,
-      totalReturnedUsdc,
-      totalConsumedUsdc,
-    },
+    overall: computeOverall(allEvents),
     fetchedAt: new Date().toISOString(),
     fromBlock: DEPLOY_BLOCK,
     toBlock: latestBlock,
   };
 
   globalThis.__sponsoredSnapshot = snapshot;
+  persistToDb(allEvents, latestBlock).catch(e => console.error('[sponsored] persist error:', e));
   return snapshot;
 }

@@ -350,6 +350,8 @@ async function buildSnapshot(): Promise<MakerRebatesSnapshot> {
 
 /* ─────── cache ─────── */
 
+import { loadCache, saveCache } from './db';
+
 interface CacheData {
   dailyTotals: DailyTotal[];
   receiverAll: Map<string, number>;
@@ -366,11 +368,43 @@ declare global {
 
 const STALE_MS = 5 * 60 * 1000;
 
+async function hydrateFromDb(): Promise<void> {
+  if (globalThis.__makerRebateCache) return;
+  const row = await loadCache('maker');
+  if (!row) return;
+  const v = row.value as {
+    dailyTotals: DailyTotal[];
+    receiverAll: Record<string, number>;
+    distributors: string[];
+  };
+  globalThis.__makerRebateCache = {
+    dailyTotals: v.dailyTotals ?? [],
+    receiverAll: new Map(Object.entries(v.receiverAll ?? {})),
+    lastScannedBlock: row.lastBlock,
+    distributors: v.distributors ?? [],
+  };
+  console.log(`[maker-rebates] Hydrated from DB: ${v.dailyTotals?.length ?? 0} days, block ${row.lastBlock}`);
+}
+
+async function persistToDb(): Promise<void> {
+  const cache = globalThis.__makerRebateCache;
+  if (!cache) return;
+  const serialized = {
+    dailyTotals: cache.dailyTotals,
+    receiverAll: Object.fromEntries(cache.receiverAll),
+    distributors: cache.distributors,
+  };
+  await saveCache('maker', serialized, cache.lastScannedBlock);
+}
+
 export async function fetchMakerRebates(force = false): Promise<MakerRebatesSnapshot> {
   const cached = globalThis.__makerRebatesSnapshot;
   if (!force && cached) {
     const age = Date.now() - new Date(cached.fetchedAt).getTime();
     if (age < STALE_MS) return cached;
   }
-  return buildSnapshot();
+  await hydrateFromDb();
+  const snapshot = await buildSnapshot();
+  persistToDb().catch(e => console.error('[maker-rebates] persist error:', e));
+  return snapshot;
 }
