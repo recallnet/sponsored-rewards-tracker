@@ -18,15 +18,14 @@ const SPONSORED_TOPIC = '0xa0e1f8e6fb6dd49d885fabbf89adb64c0ef2b16b2786c92d68517
 const WITHDRAWN_TOPIC = '0xb607e1cd434478843932237c1441e30dade0dd0b82ec588670a1d43dea0599de';
 
 const RPC_ENDPOINTS = [
-  'https://polygon-bor-rpc.publicnode.com',
-  'https://1rpc.io/matic',
-  'https://rpc-mainnet.matic.quiknode.pro',
   'https://polygon.drpc.org',
+  'https://polygon-bor-rpc.publicnode.com',
+  'https://rpc-mainnet.matic.quiknode.pro',
 ];
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 
-const CHUNK_SIZE = 40_000;
+const CHUNK_SIZE = 10_000;
 const RPC_TIMEOUT_MS = 15_000;
 
 /* ─────── types ─────── */
@@ -120,7 +119,8 @@ async function fetchLogsChunk(topic0: string, from: number, to: number): Promise
         signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
       });
       const d = (await res.json()) as { result?: RawLog[]; error?: unknown };
-      if (d.result) return d.result;
+      if (d.result && d.result.length > 0) return d.result;
+      if (d.error) continue;
     } catch { continue; }
   }
   return [];

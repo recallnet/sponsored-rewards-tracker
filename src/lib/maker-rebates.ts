@@ -20,14 +20,13 @@ const USDC_E = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 const USDC_DECIMALS = 1e6;
 const RPC_TIMEOUT_MS = 12_000;
-const CHUNK_SIZE = 50_000;
+const CHUNK_SIZE = 10_000;
 const BLOCKS_PER_DAY = 43_200;
 
 const RPC_ENDPOINTS = [
-  'https://polygon-bor-rpc.publicnode.com',
-  'https://1rpc.io/matic',
-  'https://rpc-mainnet.matic.quiknode.pro',
   'https://polygon.drpc.org',
+  'https://polygon-bor-rpc.publicnode.com',
+  'https://rpc-mainnet.matic.quiknode.pro',
 ];
 
 /* ─────── types ─────── */
@@ -118,7 +117,8 @@ async function fetchLogsChunk(
         signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
       });
       const d = (await res.json()) as { result?: RawLog[]; error?: unknown };
-      if (d.result) return d.result;
+      if (d.result && d.result.length > 0) return d.result;
+      if (d.error) continue;
     } catch { continue; }
   }
   return [];
