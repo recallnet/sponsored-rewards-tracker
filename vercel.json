@@ -6,8 +6,8 @@
   },
   "crons": [
     {
-      "path": "/api/cron/refresh",
-      "schedule": "0 0 * * *"
+      "path": "/api/ping",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

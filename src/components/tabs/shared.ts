@@ -4,9 +4,9 @@ export const PAGE_SIZE = 50;
 
 export const SWR_CONFIG = {
   refreshInterval: 60_000,
-  revalidateOnFocus: false,
-  revalidateOnReconnect: false,
-  dedupingInterval: 30_000,
+  revalidateOnFocus: true,
+  revalidateOnReconnect: true,
+  dedupingInterval: 15_000,
   keepPreviousData: true,
 } as const;
 
