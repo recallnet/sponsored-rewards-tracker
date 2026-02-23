@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { PlatformNav } from '@/components/PlatformNav';
 
 export const metadata: Metadata = {
-  title: 'Polymarket Rewards Tracker',
-  description: 'Sponsored & LP rewards tracker for Polymarket',
+  title: 'Rewards Tracker',
+  description: 'LP & rewards tracker for prediction markets',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -12,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <nav className="border-b border-[#333] sticky top-0 z-50 bg-black">
           <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-14">
-            <div />
+            <PlatformNav />
             <a
               href="https://github.com/sanketagarwal/polymarket-rewards-mcp"
               target="_blank"

@@ -23,27 +23,33 @@ export async function GET(request: NextRequest) {
 
   await initDb().catch(e => console.error('[cron] initDb error:', e));
 
+  const [lpResult, spResult, mrResult] = await Promise.allSettled([
+    fetchLpRewards(true),
+    fetchSponsoredRewards(true),
+    fetchMakerRebates(true),
+  ]);
+
   const results: Record<string, unknown> = {};
 
-  try {
-    const lp = await fetchLpRewards(true);
+  if (lpResult.status === 'fulfilled') {
+    const lp = lpResult.value;
     results.lp = { ok: true, total1d: lp.overall.total1d, receivers: lp.overall.totalReceivers };
-  } catch (e) {
-    results.lp = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  } else {
+    results.lp = { ok: false, error: lpResult.reason instanceof Error ? lpResult.reason.message : 'unknown' };
   }
 
-  try {
-    const sp = await fetchSponsoredRewards(true);
+  if (spResult.status === 'fulfilled') {
+    const sp = spResult.value;
     results.sponsored = { ok: true, events: sp.overall.totalEvents, markets: sp.overall.uniqueMarkets };
-  } catch (e) {
-    results.sponsored = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  } else {
+    results.sponsored = { ok: false, error: spResult.reason instanceof Error ? spResult.reason.message : 'unknown' };
   }
 
-  try {
-    const mr = await fetchMakerRebates(true);
+  if (mrResult.status === 'fulfilled') {
+    const mr = mrResult.value;
     results.maker = { ok: true, total1d: mr.overall.total1d, receivers: mr.overall.totalReceivers };
-  } catch (e) {
-    results.maker = { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  } else {
+    results.maker = { ok: false, error: mrResult.reason instanceof Error ? mrResult.reason.message : 'unknown' };
   }
 
   return NextResponse.json({ refreshedAt: new Date().toISOString(), ...results });

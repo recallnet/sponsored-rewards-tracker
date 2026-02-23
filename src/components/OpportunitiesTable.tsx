@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, lazy, Suspense } from 'react';
+import { useState, lazy, Suspense, useEffect } from 'react';
+import { preload } from 'swr';
+import { fetcher } from './tabs/shared';
 
 type Tab = 'sponsored' | 'lp' | 'maker';
 
@@ -8,8 +10,14 @@ const SponsoredTab = lazy(() => import('./tabs/SponsoredTab'));
 const LpTab = lazy(() => import('./tabs/LpTab'));
 const MakerTab = lazy(() => import('./tabs/MakerTab'));
 
+const POLYMARKET_APIS = ['/api/sponsored', '/api/lp-rewards', '/api/maker-rebates'] as const;
+
 export function OpportunitiesTable() {
   const [activeTab, setActiveTab] = useState<Tab>('sponsored');
+
+  useEffect(() => {
+    POLYMARKET_APIS.forEach(url => preload(url, fetcher));
+  }, []);
 
   return (
     <div>

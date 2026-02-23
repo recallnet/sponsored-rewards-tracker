@@ -1,0 +1,21 @@
+{
+  "name": "rewards-tracker-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for prediction market rewards data (Polymarket, Limitless, Kalshi)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "rewards-tracker-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

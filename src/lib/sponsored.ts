@@ -250,7 +250,7 @@ declare global {
   var __sponsoredSnapshot: SponsoredSnapshot | undefined;
 }
 
-const STALE_MS = 2 * 60 * 1000;
+const STALE_MS = 5 * 60 * 1000;
 
 async function hydrateFromDb(): Promise<void> {
   if (globalThis.__sponsoredSnapshot) return;
