@@ -20,6 +20,8 @@ const eslintConfig = [
       '@typescript-eslint/no-non-null-assertion': 'off',
       curly: 'off',
       'no-console': 'off',
+      '@next/next/no-html-link-for-pages': 'off',
+      'react/no-unescaped-entities': 'off',
     },
   },
 ];

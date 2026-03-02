@@ -246,7 +246,6 @@ async function enrichMarketNames(events: SponsoredEvent[]): Promise<void> {
 import { loadCache, saveCache } from './db';
 
 declare global {
-  // eslint-disable-next-line no-var
   var __sponsoredSnapshot: SponsoredSnapshot | undefined;
 }
 

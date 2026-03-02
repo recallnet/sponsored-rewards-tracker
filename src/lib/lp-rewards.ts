@@ -303,9 +303,7 @@ interface LpCacheData {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __lpRewardsSnapshot: LpRewardsSnapshot | undefined;
-  // eslint-disable-next-line no-var
   var __lpRewardCache: LpCacheData | undefined;
 }
 

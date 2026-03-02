@@ -360,9 +360,7 @@ interface CacheData {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __makerRebatesSnapshot: MakerRebatesSnapshot | undefined;
-  // eslint-disable-next-line no-var
   var __makerRebateCache: CacheData | undefined;
 }
 

@@ -51,11 +51,8 @@ const DATA_MODE =
 const POLYMARKET_REWARDS_MAX_PAGES = Number(process.env.POLYMARKET_REWARDS_MAX_PAGES ?? 250);
 
 declare global {
-  // eslint-disable-next-line no-var
   var __cheffOpportunitiesSnapshot: OpportunitiesSnapshot | undefined;
-  // eslint-disable-next-line no-var
   var __cheffSponsoredSnapshot: OpportunitiesSnapshot | undefined;
-  // eslint-disable-next-line no-var
   var __cheffLiveRefreshPromise: Promise<OpportunitiesSnapshot> | undefined;
 }
 

@@ -10,7 +10,6 @@ export const maxDuration = 60;
 const THROTTLE_MS = 3 * 60 * 1000;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __lastPingAt: number | undefined;
 }
 

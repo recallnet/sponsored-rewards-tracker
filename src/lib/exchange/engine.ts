@@ -27,7 +27,6 @@ import type {
 
 // Use globalThis to persist across Hot Module Replacement in dev mode
 declare global {
-  // eslint-disable-next-line no-var
   var cheffStore:
     | {
         agents: Map<string, Agent>;
