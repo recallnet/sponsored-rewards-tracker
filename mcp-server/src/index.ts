@@ -117,7 +117,8 @@ server.tool(
           return d.error ? d : {
             totalDeposited: d.overall?.totalAmountUsdc,
             netAmount: d.overall?.netAmountUsdc,
-            activeMarkets: d.overall?.activeCount,
+            consumed: d.overall?.totalConsumedUsdc,
+            uniqueMarkets: d.overall?.uniqueMarkets,
             uniqueSponsors: d.overall?.uniqueSponsors,
           };
         })(),
@@ -147,7 +148,7 @@ server.tool(
           const d = get(limitlessLp);
           return d.error ? d : {
             dailyBudget: d.totalDailyBudget,
-            activeMarkets: d.activeMarketCount,
+            activeMarkets: d.rewardableMarkets,
           };
         })(),
         points: (() => {

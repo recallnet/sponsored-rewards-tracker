@@ -57,7 +57,7 @@ Append `?force=1` to bypass cache. Responses are JSON with `Cache-Control: s-max
   }],
   overall: {
     totalEvents, uniqueSponsors, uniqueMarkets,
-    totalAmountUsdc, netAmountUsdc, totalReturnedUsdc, activeCount
+    totalAmountUsdc, netAmountUsdc, totalReturnedUsdc, totalConsumedUsdc
   }
 }
 ```
@@ -74,9 +74,10 @@ Append `?force=1` to bypass cache. Responses are JSON with `Cache-Control: s-max
 ### Limitless LP Rewards
 ```typescript
 {
-  totalDailyBudget, activeMarketCount,
-  categories: [{ category, marketCount, totalDailyReward }],
-  topMarkets: [{ title, dailyReward, spread, minShares, category }]
+  totalDailyBudget, rewardableMarkets, totalClobMarkets,
+  categories: [{ category, marketCount, dailyReward }],
+  topMarkets: [{ title, slug, dailyReward, maxSpread, minSize, category, volume }],
+  nextPayoutUtc
 }
 ```
 
@@ -84,9 +85,10 @@ Append `?force=1` to bypass cache. Responses are JSON with `Cache-Control: s-max
 ```typescript
 {
   allTimeTotal, thisWeekTotal, dailyAverage,
-  seasons: [{ name, totalPoints }],
-  topEarners: [{ address, points }],
-  nextDistribution  // ISO date string (next Monday 12:00 UTC)
+  seasons: [{ name, totalPoints, periods: [{ start, end, points }], status }],
+  currentSeason,
+  topEarners: [{ rank, address, displayName, weeklyPoints, totalPoints, rankName }],
+  nextDistribution  // ISO date string
 }
 ```
 
@@ -94,10 +96,12 @@ Append `?force=1` to bypass cache. Responses are JSON with `Cache-Control: s-max
 ```typescript
 {
   grandTotalUsd,
-  active: { totalRewardUsd, volumeRewardUsd, liquidityRewardUsd },
-  paidOut: { totalRewardUsd, volumeRewardUsd, liquidityRewardUsd },
-  activeMarkets: [{ title, eventTicker, type, rewardUsd, startDate, endDate }],
-  topPaidOutMarkets: [{ title, eventTicker, type, rewardUsd }]
+  active: { totalPrograms, totalRewardUsd, volumePrograms, volumeRewardUsd, liquidityPrograms, liquidityRewardUsd },
+  paidOut: { totalPrograms, totalRewardUsd, volumePrograms, volumeRewardUsd, liquidityPrograms, liquidityRewardUsd },
+  closed: { totalPrograms, totalRewardUsd, volumePrograms, volumeRewardUsd, liquidityPrograms, liquidityRewardUsd },
+  activeMarkets: [{ marketTicker, title, eventTicker, type, rewardUsd, startDate, endDate, targetSize, discountBps }],
+  topPaidOutMarkets: [{ marketTicker, title, eventTicker, type, rewardUsd, startDate, endDate }],
+  recentPayouts: [{ marketTicker, title, type, rewardUsd, startDate, endDate }]
 }
 ```
 
@@ -118,9 +122,12 @@ curl -s https://sponsored-rewards-tracker.vercel.app/api/kalshi/incentives | jq 
 
 ## Key Numbers to Know
 
-- **Polymarket LP rewards**: ~$20K/day USDC to ~3,000 LPs
-- **Polymarket maker rebates**: ~$130K/day USDC to ~6,000 makers
-- **Limitless LP rewards**: variable per-market daily budget, paid at 12:00 UTC
+- **Polymarket sponsored rewards**: ~$489K deposited by 10K+ sponsors across 2K+ markets
+- **Polymarket LP rewards**: ~$21K/day USDC to ~5,700 LPs
+- **Polymarket maker rebates**: ~$150K/day USDC to ~6,500 makers
+- **Limitless LP rewards**: ~$4-6K/day across ~197 markets, paid at 12:00 UTC
+- **Limitless points**: ~335K/day, 102M all-time, Season 3 active
+- **Kalshi**: $1.43M total paid out, 297 active programs ($47K in pools)
 - **Kalshi volume incentives**: $0.005/contract cap, pools $300–$10K per market
 - **Kalshi liquidity incentives**: $10–$1,000 daily pools, scored second-by-second
 
