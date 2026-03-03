@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
-import useSWR from 'swr';
-import { formatCurrency, formatRelativeTime, cn } from '@/lib/utils';
+import useSWR from "swr";
+import { withBasePath } from "@/lib/base-path";
+import { formatCurrency, formatRelativeTime, cn } from "@/lib/utils";
 
 interface Activity {
   id: string;
@@ -16,19 +17,24 @@ interface Activity {
   timestamp: string;
 }
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) =>
+  fetch(withBasePath(url)).then((res) => res.json());
 
 export function ActivityFeed() {
-  const { data, error, isLoading } = useSWR<{ activity: Activity[] }>('/api/activity', fetcher, {
-    refreshInterval: 3000,
-  });
+  const { data, error, isLoading } = useSWR<{ activity: Activity[] }>(
+    "/api/activity",
+    fetcher,
+    {
+      refreshInterval: 3000,
+    },
+  );
 
   if (isLoading) {
     return (
       <div className="card animate-pulse">
         <div className="h-6 bg-surface-hover rounded w-1/3 mb-4"></div>
         <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map(i => (
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="h-10 bg-surface-hover rounded"></div>
           ))}
         </div>
@@ -49,7 +55,7 @@ export function ActivityFeed() {
         <span>Recent Activity</span>
       </h2>
       <div className="space-y-2">
-        {activities.map(activity => (
+        {activities.map((activity) => (
           <div
             key={activity.id}
             className="flex items-center justify-between text-sm py-2 border-b border-border/30 last:border-0"
@@ -57,8 +63,8 @@ export function ActivityFeed() {
             <div className="flex-1 min-w-0">
               <span
                 className={cn(
-                  'font-medium',
-                  activity.action === 'BUY' ? 'text-profit' : 'text-loss'
+                  "font-medium",
+                  activity.action === "BUY" ? "text-profit" : "text-loss",
                 )}
               >
                 {activity.action}
@@ -71,7 +77,9 @@ export function ActivityFeed() {
               </span>
             </div>
             <div className="flex items-center gap-4 ml-4">
-              <span className="mono text-text-secondary">{formatCurrency(activity.total)}</span>
+              <span className="mono text-text-secondary">
+                {formatCurrency(activity.total)}
+              </span>
               <span className="text-text-muted text-xs whitespace-nowrap">
                 {formatRelativeTime(activity.timestamp)}
               </span>

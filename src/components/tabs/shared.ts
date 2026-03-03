@@ -1,4 +1,5 @@
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency } from "@/lib/utils";
+import { withBasePath } from "@/lib/base-path";
 
 export const PAGE_SIZE = 50;
 
@@ -10,15 +11,15 @@ export const SWR_CONFIG = {
   keepPreviousData: true,
 } as const;
 
-export const fetcher = async <T,>(url: string): Promise<T> => {
-  const res = await fetch(url);
+export const fetcher = async <T>(url: string): Promise<T> => {
+  const res = await fetch(withBasePath(url));
   if (!res.ok) throw new Error(await res.text().catch(() => `${res.status}`));
   return res.json() as Promise<T>;
 };
 
 export function formatRelative(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
-  if (ms < 60_000) return 'just now';
+  if (ms < 60_000) return "just now";
   const mins = Math.floor(ms / 60_000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
@@ -26,9 +27,9 @@ export function formatRelative(iso: string): string {
 }
 
 export function formatTimeLeft(iso?: string): string {
-  if (!iso) return '--';
+  if (!iso) return "--";
   const ms = new Date(iso).getTime() - Date.now();
-  if (ms <= 0) return 'expired';
+  if (ms <= 0) return "expired";
   const totalHours = Math.floor(ms / 3_600_000);
   const days = Math.floor(totalHours / 24);
   const hours = totalHours % 24;

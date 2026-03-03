@@ -1,7 +1,10 @@
-'use client';
+"use client";
 
-import useSWR from 'swr';
-import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import useSWR from "swr";
+import { withBasePath } from "@/lib/base-path";
+import { formatCurrency, formatPercent, cn } from "@/lib/utils";
 
 interface LeaderboardEntry {
   rank: number;
@@ -13,13 +16,15 @@ interface LeaderboardEntry {
   winRate: number;
 }
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+const fetcher = (url: string) =>
+  fetch(withBasePath(url)).then((res) => res.json());
 
 export function Leaderboard() {
+  const router = useRouter();
   const { data, error, isLoading } = useSWR<{ agents: LeaderboardEntry[] }>(
-    '/api/leaderboard',
+    "/api/leaderboard",
     fetcher,
-    { refreshInterval: 5000 }
+    { refreshInterval: 5000 },
   );
 
   if (isLoading) {
@@ -27,7 +32,7 @@ export function Leaderboard() {
       <div className="card animate-pulse">
         <div className="h-8 bg-surface-hover rounded w-1/3 mb-4"></div>
         <div className="space-y-3">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3].map((i) => (
             <div key={i} className="h-12 bg-surface-hover rounded"></div>
           ))}
         </div>
@@ -46,9 +51,9 @@ export function Leaderboard() {
   const agents = data?.agents ?? [];
 
   const getRankEmoji = (rank: number) => {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
+    if (rank === 1) return "🥇";
+    if (rank === 2) return "🥈";
+    if (rank === 3) return "🥉";
     return rank.toString();
   };
 
@@ -71,40 +76,42 @@ export function Leaderboard() {
             </tr>
           </thead>
           <tbody>
-            {agents.map(agent => (
+            {agents.map((agent) => (
               <tr
                 key={agent.agentId}
                 className="border-b border-border/50 table-row cursor-pointer"
-                onClick={() => (window.location.href = `/agents/${agent.agentId}`)}
+                onClick={() => router.push(`/agents/${agent.agentId}`)}
               >
                 <td className="py-3 pr-4">
                   <span className="text-lg">{getRankEmoji(agent.rank)}</span>
                 </td>
                 <td className="py-3 pr-4">
-                  <a
+                  <Link
                     href={`/agents/${agent.agentId}`}
                     className="font-medium hover:text-accent transition-colors"
                   >
                     {agent.name}
-                  </a>
+                  </Link>
                 </td>
                 <td
                   className={cn(
-                    'py-3 pr-4 text-right mono',
-                    agent.totalPnL >= 0 ? 'text-profit' : 'text-loss'
+                    "py-3 pr-4 text-right mono",
+                    agent.totalPnL >= 0 ? "text-profit" : "text-loss",
                   )}
                 >
                   {formatCurrency(agent.totalPnL)}
                 </td>
                 <td
                   className={cn(
-                    'py-3 pr-4 text-right mono',
-                    agent.returnPct >= 0 ? 'text-profit' : 'text-loss'
+                    "py-3 pr-4 text-right mono",
+                    agent.returnPct >= 0 ? "text-profit" : "text-loss",
                   )}
                 >
                   {formatPercent(agent.returnPct)}
                 </td>
-                <td className="py-3 pr-4 text-right mono text-text-secondary">{agent.trades}</td>
+                <td className="py-3 pr-4 text-right mono text-text-secondary">
+                  {agent.trades}
+                </td>
                 <td className="py-3 text-right mono text-text-secondary">
                   {agent.winRate.toFixed(0)}%
                 </td>
