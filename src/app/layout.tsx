@@ -15,12 +15,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-14">
             <PlatformNav />
             <a
-              href="https://github.com/sanketagarwal/polymarket-rewards-mcp"
+              href="https://github.com/recallnet/skills-pred-market-rewards"
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs border border-[#333] px-4 py-1.5 hover:text-white hover:border-white transition-colors text-[#999]"
             >
-              Snipe Rewards
+              Rewards Skills
             </a>
           </div>
         </nav>
