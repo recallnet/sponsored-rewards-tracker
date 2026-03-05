@@ -5,6 +5,17 @@ import { PlatformNav } from '@/components/PlatformNav';
 export const metadata: Metadata = {
   title: 'Rewards Tracker',
   description: 'LP & rewards tracker for prediction markets',
+  openGraph: {
+    title: 'Rewards Tracker',
+    description: 'LP & rewards tracker for prediction markets',
+    images: ['/opengraph-image.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Rewards Tracker',
+    description: 'LP & rewards tracker for prediction markets',
+    images: ['/opengraph-image.png'],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
